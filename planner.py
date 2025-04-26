@@ -10,8 +10,6 @@ return:
     3. expanded set (all nodes actually expanded from the frontier set throughout the search)
 """
 
-# ********************* NEED TO ADD CARDINAL DIRECTION TO EACH PARENT ENTRY WHEN UPDATED SO WE CAN RETRACE
-
 DIRECTIONS = ["N", "E", "S", "W"]
 
 def get_args_and_parse():
@@ -45,87 +43,87 @@ def get_args_and_parse():
                 dirty.add((i, j))
             elif cell == '#':
                 blocked.add((i, j))
+                
+    print("Dirty set:", dirty)
+    print("Blocked set:", blocked) 
 
-    if search == "uniform-cost":
-        actions, generated, expanded = ucs(grid, dirty, blocked, start)
-    elif search == "depth-first":
-        actions, generated, expanded = dfs(grid, dirty, blocked, start)
-    else:
-        print("ERROR: Invalid search method.")
-        return
+    return search, grid, dirty, blocked, start
 
-def reconstruct_path(parents: dict, state: tuple(int, int)):
-    # starting from the end of the dict, reconstruct the path
-    pass
+def reconstruct_path(parents: dict, state):
+    actions = []
+    current = state
+    while True:
+        cost, parent, action = parents[current]
+        if parent is None:
+            break
+        actions.append(action)
+        current = parent
+    actions.reverse()
+    return actions
 
-def ucs(grid: list, dirty: set, blocked: set, start: tuple(int, int)):
-    # sets needed: frontier, explored, action (for node recounting and path return)
-    # use FIFO queue
-    # traverse grid using UCS (dijikstra's) rules, avoiding blocked, checking off dirty until empty
+def ucs(grid: list, dirty: set, blocked: set, start):
     frontier = queue.PriorityQueue()
     visited = set()
-    parents = {}
-    generated = 0
     expanded = 0
-    num_cols = len(grid[0])
+    generated = 0
+    
+    start_state = (start[0], start[1], frozenset(dirty))
+    parents = {start_state: (0, None, None)}  # cost, parent_state, action
+    frontier.put((0, start_state))
     num_rows = len(grid)
+    num_cols = len(grid[0])
 
-    # add start to frontier and parents
-    parents[start] = (0, None)
-    frontier.put((0, start))
-
-    while frontier:
-        # loop through, popping from the frontier
-        # each pop gets added to the visited list (cardinal dir + col + row)
-        state = frontier.get()
+    while not frontier.empty():
+        cost, state = frontier.get()
+        if state in visited:
+            continue
         visited.add(state)
         expanded += 1
 
-        # if this coordinate in the dirty set, remove it
-        if state in dirty:
-            dirty.remove(state)
-            # if dirty set empty, break out of loop and return actions and num of generated + expanded nodes
-            if len(dirty) == 0:
-                return reconstruct_path(parents, state), generated, expanded
+        row, col, dirty_rem = state
+        
+        # clean if needed
+        if (row, col) in dirty_rem:
+            print("Cleaning dirty cell at (", row, ", ", col, ")")
+            dirty_rem = dirty_rem - {(row, col)}
+            
+        # goal check
+        if not dirty_rem:
+            print("Dirty set:", dirty_rem)
+            return reconstruct_path(parents, state), generated, expanded
 
         for dir in DIRECTIONS:
-            if dir == 'N':
-                child = state[0] - 1, state[1]
-            elif dir == 'E':
-                child = state[0], state[1] + 1
-            elif dir == 'S':
-                child = state[0] + 1, state[1]
-            elif dir == 'W':
-                child = state[0], state[1] - 1
-
-            # calculate new cost for the child
-            new_cost = parents[state][0] + 1
+            if dir == 'N': nr, nc = row - 1, col
+            elif dir == 'E': nr, nc = row, col + 1
+            elif dir == 'S': nr, nc = row + 1, col
+            elif dir == 'W': nr, nc = row, col - 1
+            else: continue
             
-            # when expanding frontier, don't add child if: 
-            #   if direction in visited
-            #   if direction out of bounds
-            #   if direction is blocked
-            if child in visited or child in blocked:
+            # bounds & blocked
+            if nr < 0 or nr >= num_rows or nc < 0 or nc >= num_cols or (nr, nc) in blocked:
                 continue
-            if child[0] < 0 or child[0] >= num_rows or child[1] < 0 or child[1] >= num_cols:
+            
+            # carry over dirty_rem; cleaning happens at expansion
+            new_state = (nr, nc, dirty_rem)
+            new_cost = cost + 1
+            if new_state in visited:
                 continue
-
-            # add child to frontier and parents if not already seen or it has a better path
-            if child not in parents or new_cost < parents[child][0]:
-                parents[child] = (new_cost, state)
-                frontier.put((new_cost, child))
+            
+            # add/relax
+            if new_state not in parents or new_cost < parents[new_state][0]:
+                parents[new_state] = (new_cost, state, dir)
+                frontier.put((new_cost, new_state))
                 generated += 1
-    
+
     print("ERROR: Unable to find solution.")
     sys.exit(1)
 
-def dfs(grid: list, dirty: set, blocked: set, start: tuple(int, int)):
+def dfs(grid: list, dirty: set, blocked: set, start):
     # sets needed: frontier, explored, action (for node recounting and path return)
     # use LIFO stack
     # traverse grid according to DFS, avoiding blocked, checking off dirty until empty
-    frontier = []
 
-    return actions, generated, expanded
+    pass
 
 def main():
     search, grid, dirty, blocked, start = get_args_and_parse()
@@ -141,7 +139,7 @@ def main():
     for action in actions:
         print(action)
     print(f"{generated} nodes generated")
-    print(f"{expanded} nodes generated")
+    print(f"{expanded} nodes expanded")
 
     return
 
