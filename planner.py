@@ -50,6 +50,10 @@ def get_args_and_parse():
     return search, grid, dirty, blocked, start
 
 def reconstruct_path(parents: dict, state):
+    print("Parents:")
+    for key, value in parents.items():
+        print(f"{key} : {value}")
+
     actions = []
     current = state
     while True:
@@ -84,12 +88,10 @@ def ucs(grid: list, dirty: set, blocked: set, start):
         
         # clean if needed
         if (row, col) in dirty_rem:
-            print("Cleaning dirty cell at (", row, ", ", col, ")")
             dirty_rem = dirty_rem - {(row, col)}
             
         # goal check
         if not dirty_rem:
-            print("Dirty set:", dirty_rem)
             return reconstruct_path(parents, state), generated, expanded
 
         for dir in DIRECTIONS:
