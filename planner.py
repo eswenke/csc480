@@ -43,17 +43,10 @@ def get_args_and_parse():
                 dirty.add((i, j))
             elif cell == '#':
                 blocked.add((i, j))
-                
-    print("Dirty set:", dirty)
-    print("Blocked set:", blocked) 
 
     return search, grid, dirty, blocked, start
 
 def reconstruct_path(parents: dict, state):
-    print("Parents:")
-    for key, value in parents.items():
-        print(f"{key} : {value}")
-
     actions = []
     current = state
     while True:
@@ -74,6 +67,7 @@ def ucs(grid: list, dirty: set, blocked: set, start):
     start_state = (start[0], start[1], frozenset(dirty))
     parents = {start_state: (0, None, None)}  # cost, parent_state, action
     frontier.put((0, start_state))
+    generated += 1
     num_rows = len(grid)
     num_cols = len(grid[0])
 
@@ -88,12 +82,21 @@ def ucs(grid: list, dirty: set, blocked: set, start):
         
         # clean if needed
         if (row, col) in dirty_rem:
-            dirty_rem = dirty_rem - {(row, col)}
-            
+            new_dirty_rem = dirty_rem - {(row, col)}
+            new_state = (row, col, new_dirty_rem)
+            new_cost = cost + 1
+            if new_state not in visited:
+                if new_state not in parents or new_cost < parents[new_state][0]:
+                    parents[new_state] = (new_cost, state, 'V')
+                    frontier.put((new_cost, new_state))
+                    generated += 1
+            continue
+
         # goal check
         if not dirty_rem:
             return reconstruct_path(parents, state), generated, expanded
 
+        # for each direction, check the child
         for dir in DIRECTIONS:
             if dir == 'N': nr, nc = row - 1, col
             elif dir == 'E': nr, nc = row, col + 1
@@ -121,11 +124,70 @@ def ucs(grid: list, dirty: set, blocked: set, start):
     sys.exit(1)
 
 def dfs(grid: list, dirty: set, blocked: set, start):
-    # sets needed: frontier, explored, action (for node recounting and path return)
-    # use LIFO stack
-    # traverse grid according to DFS, avoiding blocked, checking off dirty until empty
+    # depth-first search using list as a stack
+    frontier = []
+    visited = set()
+    generated = 0
+    expanded = 0
 
-    pass
+    # start state includes position and remaining dirty cells
+    start_state = (start[0], start[1], frozenset(dirty))
+    parents = {start_state: (None, None, None)}
+    frontier.append(start_state)
+    generated += 1
+    num_rows = len(grid)
+    num_cols = len(grid[0])
+
+    while frontier:
+        # pop off the frontier, skipping if visited
+        state = frontier.pop()
+        if state in visited:
+            continue
+        visited.add(state)
+        expanded += 1
+
+        row, col, dirty_rem = state
+        # clean if needed
+        if (row, col) in dirty_rem:
+            new_dirty_rem = dirty_rem - {(row, col)}
+            new_state = (row, col, new_dirty_rem)
+            if new_state not in visited:
+                parents[new_state] = (None, state, 'V')
+                frontier.append(new_state)
+                generated += 1
+            continue
+
+        # goal check
+        if not dirty_rem:
+            return reconstruct_path(parents, state), generated, expanded
+
+        # expand neighbors
+        for dir in DIRECTIONS:
+            if dir == 'N':
+                nr, nc = row - 1, col
+            elif dir == 'E':
+                nr, nc = row, col + 1
+            elif dir == 'S':
+                nr, nc = row + 1, col
+            elif dir == 'W':
+                nr, nc = row, col - 1
+            else:
+                continue
+
+            # skip out of bounds or blocked
+            if nr < 0 or nr >= num_rows or nc < 0 or nc >= num_cols or (nr, nc) in blocked:
+                continue
+
+            new_state = (nr, nc, dirty_rem)
+            if new_state in visited:
+                continue
+
+            parents[new_state] = (None, state, dir)
+            frontier.append(new_state)
+            generated += 1
+
+    print("ERROR: Unable to find solution.")
+    sys.exit(1)
 
 def main():
     search, grid, dirty, blocked, start = get_args_and_parse()
