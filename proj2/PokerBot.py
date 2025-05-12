@@ -47,8 +47,9 @@ TECHNICAL DETAILS ***
     - Implement all components from scratch (deck, evaluation, rollout, etc.)
 
 """
-from ast import Tuple
 import random
+import math
+import time
 
 
 DECK = [
@@ -80,24 +81,107 @@ HAND_RANKS = {
     "Royal Flush": 10
 }
 
+class Node:
+    """
+    Node class for Monte Carlo Tree Search.
+    Represents a state in the game tree.
+    """
+    def __init__(self, hole_cards, community_cards, remaining_deck, parent=None):
+        self.hole_cards = hole_cards
+        self.community_cards = community_cards.copy() if community_cards else []
+        self.remaining_deck = remaining_deck.copy() if remaining_deck else []
+        self.parent = parent
+        self.children = []
+        self.wins = 0
+        self.simulations = 0
+    
+    def add_child(self, hole_cards, community_cards, remaining_deck):
+        """
+        Creates and adds a child node to this node.
+        Returns the newly created child node.
+        """
+        child = Node(hole_cards, community_cards, remaining_deck, self)
+        self.children.append(child)
+        return child
+    
+    def update(self, result):
+        """
+        Updates node statistics based on simulation result.
+        """
+        self.simulations += 1
+        if result == 1:  # win
+            self.wins += 1
+    
+    def get_ucb(self, total_simulations, c=1.41):
+        """
+        Calculates the UCB1 value for this node.
+        """
+        return ucb1(self.wins, self.simulations, total_simulations, c)
+
 def ucb1(wins, simulations, total_simulations, c=1.41):
     """
     Calculates the Upper Confidence Bound 1 (UCB1) value for node selection in MCTS.
     Balances exploration and exploitation during the selection phase.
     """
-    pass
+    # avoid division by zero
+    if simulations == 0:
+        return float('inf')  # inf value ensures parent nodes are explored first
+    
+    # exploitation term: win rate
+    exploitation = wins / simulations
+    
+    # exploration term: confidence bound
+    exploration = c * math.sqrt(math.log(total_simulations) / simulations)
+    
+    return exploitation + exploration
 
 def draw_cards(deck, num_cards):
     """
     Draws a specified number of cards from the deck.
     Returns the drawn cards and the remaining deck.
     """
-    pass
+    drawn_cards = []
+    remaining_deck = deck.copy()
+
+    for _ in range(num_cards):
+        card = remaining_deck.pop(0)
+        drawn_cards.append(card)
+
+    return drawn_cards, remaining_deck
+
+def deal_community_cards(deck, phase, existing_community_cards=None):
+    """
+    Deals community cards based on the current phase.
+    """
+    if existing_community_cards is None:
+        existing_community_cards = []
+    
+    remaining_deck = deck.copy()
+    new_community_cards = existing_community_cards.copy()
+    
+    # number of cards to deal based on phase
+    if phase == 'pre-flop':
+        # no community cards yet
+        pass
+    elif phase == 'flop' and len(existing_community_cards) == 0:
+        # deal 3 cards for the flop
+        flop_cards, remaining_deck = draw_cards(remaining_deck, 3)
+        new_community_cards.extend(flop_cards)
+    elif phase == 'turn' and len(existing_community_cards) == 3:
+        # deal 1 card for the turn
+        turn_card, remaining_deck = draw_cards(remaining_deck, 1)
+        new_community_cards.extend(turn_card)
+    elif phase == 'river' and len(existing_community_cards) == 4:
+        # deal 1 card for the river
+        river_card, remaining_deck = draw_cards(remaining_deck, 1)
+        new_community_cards.extend(river_card)
+    
+    return new_community_cards, remaining_deck
 
 def evaluate_hand(hole_cards, community_cards):
     """
     Evaluates the best 5-card poker hand from the given hole cards and community cards.
-    Returns the hand rank and the best 5-card combination.
+    Returns the best 5-card combination and the hand rank (1-10, with 10 being the best).
     """
     hearts = []
     spades = []
@@ -141,9 +225,9 @@ def evaluate_hand(hole_cards, community_cards):
                     three_oak = numbers[tuple[0]]
                 
                 # erase pair if 3 oak created from that pair
-                if tuple[0] == pair1[0][0]:
+                if len(pair1) > 0 and tuple[0] == pair1[0][0]:
                     pair1 = []
-                elif tuple[0] == pair2[0][0]:
+                elif len(pair2) > 0 and tuple[0] == pair2[0][0]:
                     pair2 = []
 
             if len(numbers[tuple[0]]) == 4:
@@ -176,7 +260,8 @@ def evaluate_hand(hole_cards, community_cards):
 
         # check from here for the rest of the straight
         for j in range(i + 1, len(values)):
-            if values[j] == current_straight[i] + 1:
+            # Check if this card is consecutive with the last card in our current straight
+            if values[j] == current_straight[-1] + 1:
                 # add to current straight
                 current_straight.append(values[j])
                 if (len(current_straight) >= 5):
@@ -225,12 +310,12 @@ def evaluate_hand(hole_cards, community_cards):
 
     # check if full house
     if len(three_oak) > 0:
-        rank - HAND_RANKS['Full House']
+        rank = HAND_RANKS['Full House']
         
         if len(pair1) > 0:
             best_hand = three_oak + pair1
-        if len(pair2) > 0:
-            best_hand = three_oak + pair1
+        elif len(pair2) > 0:
+            best_hand = three_oak + pair2
 
         return best_hand, rank
 
@@ -268,7 +353,7 @@ def evaluate_hand(hole_cards, community_cards):
     if len(pair2) > 0:
         best_hand = pair2 + get_high_cards(combined_hand, pair2)
         rank = HAND_RANKS['Pair']
-        
+
         return best_hand, rank
 
     best_hand = get_high_cards(combined_hand, [])
@@ -291,23 +376,58 @@ def get_high_cards(combined_hand, best_hand):
     return cards
 
 def mcts(hole_cards, community_cards, remaining_deck, time_limit=10):
-
     """
     Main Monte Carlo Tree Search function that decides whether to fold or stay.
     Uses UCB1 for node selection and simulates potential outcomes.
     Returns the decision (fold/stay) and the estimated win probability.
     """
-    pass
-
-
-def rollout(node, remaining_deck):
-    """
-    Performs a random simulation from the current game state to the end.
-    Simulates opponent's cards and remaining community cards randomly.
-    Returns the outcome (win/loss) of the simulation.
-    """
-    pass
-
+    wins = 0
+    ties = 0
+    losses = 0
+    total_simulations = 0
+    
+    start_time = time.time()
+    
+    # create root node
+    root = Node(hole_cards, community_cards, remaining_deck)
+    
+    # run simulations until time limit is reached
+    while time.time() - start_time < time_limit:
+        # selection
+        selected_node = selection(root)
+        
+        # expansion
+        if selected_node.simulations > 0:
+            selected_node = expansion(selected_node)
+        
+        # rollout
+        result = rollout(selected_node)
+        
+        # backpropagation
+        backpropagation(selected_node, result)
+        
+        # update overall statistics
+        if result == 1:  # Win
+            wins += 1
+        elif result == 0.5:  # Tie
+            ties += 1
+        else:  # Loss
+            losses += 1
+        total_simulations += 1
+    
+    # calculate win probability (counting ties as half-wins)
+    win_probability = (wins + (ties * 0.5)) / total_simulations if total_simulations > 0 else 0
+    
+    # Print detailed statistics
+    print(f"Simulations: {total_simulations}")
+    print(f"Wins: {wins} ({wins/total_simulations*100:.1f}%)")
+    print(f"Ties: {ties} ({ties/total_simulations*100:.1f}%)")
+    print(f"Losses: {losses} ({losses/total_simulations*100:.1f}%)")
+    
+    # make decision based on win probability
+    decision = "stay" if win_probability >= 0.5 else "fold"
+    
+    return decision, win_probability
 
 def selection(node):
     """
@@ -315,34 +435,204 @@ def selection(node):
     Balances between exploration and exploitation.
     Returns the selected node for further expansion or simulation.
     """
-    pass
+    current = node
+    
+    # iteratively select the best node until we reach a leaf or unvisited node
+    while len(current.children) > 0 and current.simulations > 0:
+        # find child with highest UCB1 value
+        best_ucb = -float('inf')
+        best_child = None
+        
+        for child in current.children:
+            # calculate UCB1 value using the node's method
+            ucb_value = child.get_ucb(current.simulations)
+            
+            # update best child if this one has a higher UCB1 value
+            if ucb_value > best_ucb:
+                best_ucb = ucb_value
+                best_child = child
+        
+        # if we couldn't find a best child (shouldn't happen), break
+        if best_child is None:
+            break
+            
+        current = best_child
+    
+    return current
 
+def rollout(node):
+    """
+    Performs a random simulation from the current game state to the end.
+    """
+    sim_deck = node.remaining_deck.copy()
+    random.shuffle(sim_deck)
+    
 
-def expansion(node, remaining_deck):
+    sim_community = node.community_cards.copy()
+    hole_cards = node.hole_cards.copy()
+    
+    # make sure hole/community cards are not in the simulation deck
+    sim_deck = [card for card in sim_deck if card not in hole_cards]
+    sim_deck = [card for card in sim_deck if card not in sim_community]
+    
+    # deal opponent's cards from the remaining deck
+    opponent_cards, sim_deck = draw_cards(sim_deck, 2)
+    
+    # deal remaining community cards (if needed)
+    cards_needed = 5 - len(sim_community)
+    if cards_needed > 0:
+        additional_cards, sim_deck = draw_cards(sim_deck, cards_needed)
+    else:
+        additional_cards = []
+    
+    # add the additional cards to the community cards
+    full_community = sim_community + additional_cards
+    
+    # evaluate both hands
+    my_best_hand, my_hand_rank = evaluate_hand(hole_cards, full_community)
+    opp_best_hand, opp_hand_rank = evaluate_hand(opponent_cards, full_community)
+    
+    # compare hands (higher rank wins)
+    if my_hand_rank > opp_hand_rank:
+        return 1  # win
+    elif my_hand_rank < opp_hand_rank:
+        return 0  # loss
+    else:
+        # if same rank, compare all cards in descending order
+        my_values = sorted([card[0] for card in my_best_hand], reverse=True)
+        opp_values = sorted([card[0] for card in opp_best_hand], reverse=True)
+        
+        for my_val, opp_val in zip(my_values, opp_values):
+            if my_val > opp_val:
+                return 1  # win
+            elif my_val < opp_val:
+                return 0  # loss
+        
+        # if we get here, it's a true tie
+        return 0.5 
+
+def expansion(node):
     """
     Creates new child nodes for the selected node.
     Represents possible future game states.
     Returns the newly created child node.
     """
-    pass
-
+    # create a child node with a slightly different state to avoid cycles
+    # we'll create a copy of the remaining deck and shuffle it to represent a different possible world
+    remaining_deck = node.remaining_deck.copy()
+    
+    child = node.add_child(node.hole_cards, node.community_cards, remaining_deck)
+    
+    return child
 
 def backpropagation(node, result):
     """
     Updates node statistics (wins, simulations) after a simulation.
     Propagates the result up the tree to the root node.
     """
-    pass
+    # iteratively update all nodes from the current node up to the root
+    current = node
+    while current is not None:
+        # update current node using the node's update method
+        current.update(result)
+        # move to parent
+        current = current.parent
 
 
 def main():
-    """
-    Main function that handles the game flow.
-    Manages the poker rounds, decision points, and interfaces with the game environment.
-    """
-
+    phases = ['pre-flop', 'flop', 'turn', 'river']
+    
     # start with a shuffled deck
     deck = DECK.copy()
     random.shuffle(deck)
+    
+    # deal hole cards (2 cards for the player)
+    hole_cards, deck = draw_cards(deck, 2)
+    print(f"Your hole cards: {hole_cards}")
+    
+    community_cards = []
+    
+    # game loop through phases
+    for phase in phases:
+        print(f"\n--- {phase.upper()} ---")
+        
+        # deal community cards for this phase
+        community_cards, deck = deal_community_cards(deck, phase, community_cards)
+        
+        if community_cards:
+            print(f"Community cards: {community_cards}")
+        
+        # make decision using MCTS
+        decision, win_probability = mcts(hole_cards, community_cards, deck)
+        
+        print(f"Win probability: {win_probability:.2f}")
+        print(f"Decision: {decision}")
+        
+        # if decision is to fold, end the game
+        if decision == "fold":
+            print("You folded. Game over.")
+            return
+        
+        # update the deck by removing the known cards for the next phase
+        deck = [card for card in deck if card not in community_cards]
+    
+    print("\nGame complete! You stayed until the end.")
+    print(f"Final win probability: {win_probability:.2f}")
 
 
+def test_rollout():
+    """Test function to debug the rollout and hand evaluation"""
+    # create a test deck
+    test_deck = DECK.copy()
+    random.shuffle(test_deck)
+    
+    # create a test node with some hole cards
+    hole_cards = [(14, 'S'), (14, 'D')] 
+    print(f"My hole cards: {hole_cards}")
+    
+    # remove hole cards from deck
+    test_deck = [card for card in test_deck if card not in hole_cards]
+    
+    # create some community cards
+    community_cards = random.sample(DECK, 3)
+    print(f"Community cards: {community_cards}")
+    
+    # remove community cards from deck
+    test_deck = [card for card in test_deck if card not in community_cards]
+    
+    # create a test node
+    test_node = Node(hole_cards, community_cards, test_deck)
+    
+    wins = 0
+    ties = 0
+    losses = 0
+    for _ in range(1000):
+        result = rollout(test_node)
+        if result == 1:
+            wins += 1
+        elif result == 0.5:
+            ties += 1
+        else:
+            losses += 1
+    
+    print(f"Rollout results:")
+    print(f"Wins: {wins} ({wins/1000*100:.1f}%)")
+    print(f"Ties: {ties} ({ties/1000*100:.1f}%)")
+    print(f"Losses: {losses} ({losses/1000*100:.1f}%)")
+    print(f"Win probability: {(wins + ties*0.5)/1000:.4f}")
+    
+    # Test a specific hand evaluation
+    # my_hand, my_rank = evaluate_hand(hole_cards, community_cards)
+    # print(f"My hand: {my_hand}, rank: {my_rank}")
+    
+    # Test opponent with worse hand
+    # opp_cards = [(2, 'H'), (3, 'H')]
+    # opp_hand, opp_rank = evaluate_hand(opp_cards, community_cards)
+    # print(f"Opponent hand: {opp_hand}, rank: {opp_rank}")
+    
+    # Compare
+    # print(f"My rank > Opponent rank: {my_rank > opp_rank}")
+
+if __name__ == "__main__":
+    # test_rollout()
+    main()
